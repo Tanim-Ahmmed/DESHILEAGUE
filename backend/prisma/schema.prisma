@@ -1,0 +1,499 @@
+// Prisma schema for TapeTennis - Complete & Production-Ready
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  ADMIN
+  ORGANIZER
+  MANAGER
+  PLAYER
+}
+
+enum TournamentStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  COMPLETED
+  WAITING
+}
+
+enum TransactionType {
+  BUY
+  WITHDRAW
+  ENTRY_FEE
+  PRIZE
+  ORGANIZER_SHARE
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  SEEN
+  FAILED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum HireStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum AppealStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id                   String                 @id @unique
+  email                String                 @unique
+  zitadelId            String?                @unique
+  passwordHash         String
+  name                 String
+  username             String                 @unique
+  phoneNumber          String?                @unique
+  profilePicture       String?
+  role                 UserRole?
+  coins                Int?                    @default(0)
+  location             String?
+  isVerified           Boolean                @default(false)
+  isBanned             Boolean                @default(false)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  
+  blockedUsers         UserBlock[]            @relation("UserBlocks")
+  blockedByUsers       UserBlock[]            @relation("UserBlockedBy")
+  
+  admin                Admin?
+  organizer            Organizer?
+  manager              Manager?
+  playerProfile        PlayerProfile?
+  
+  identityVerification IdentityVerification?
+  transactions         CoinTransaction[]
+  creditHistories      CreditHistory[]
+  withdrawalRequests   WithdrawalRequest[]
+  notifications        Notification[]
+  
+  chatsSent            ChatMessage[]          @relation("UserSentMessages")
+  chatsReceived        ChatMessage[]          @relation("UserReceivedMessages")
+  groupMemberships     ChatGroupMember[]
+  groupMessages        ChatGroupMessage[]
+  createdGroups        ChatGroup[]            @relation("GroupCreator")
+}
+
+model UserBlock {
+  id          String   @id @unique
+  blocker     User     @relation("UserBlocks", fields: [blockerId], references: [id])
+  blockerId   String
+  blocked     User     @relation("UserBlockedBy", fields: [blockedId], references: [id])
+  blockedId   String
+  createdAt   DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+}
+
+model Admin {
+  id          String   @id @unique
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String   @unique
+  permissions String[] // Array of permission strings
+  isSuperAdmin Boolean @default(false)
+  createdBy   String?  // ID of admin who created this admin
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Organizer {
+  id                String       @id @unique
+  user              User         @relation(fields: [userId], references: [id])
+  userId            String       @unique
+  groundName        String?      
+  groundLocation    String
+  groundImage       String
+  umpireContact     String
+  equipment         Equipment?
+  tournaments       Tournament[]
+  earnings          Int          @default(0)
+  isProfileComplete Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+}
+
+model Equipment {
+  id          String    @id @unique
+  organizer   Organizer @relation(fields: [organizerId], references: [id])
+  organizerId String    @unique
+  hasBat      Boolean
+  hasBall     Boolean
+  hasStumps   Boolean
+  hasGloves   Boolean
+}
+
+model Manager {
+  id              String        @id @unique
+  user            User          @relation(fields: [userId], references: [id])
+  userId          String        @unique
+  areaLocation    String
+  teams           Team[]
+  hireRequests    HireRequest[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model PlayerProfile {
+  id                 String           @id @unique
+  user               User             @relation(fields: [userId], references: [id])
+  userId             String           @unique
+  battingStyle       String
+  bowlingType        String
+  bowlingArm         String
+  wicketkeeping      Boolean
+  homeTown           String?
+  currentAddress     String?
+  preferredPosition  Int
+  battingPosition    Int?
+  creditScore        Int              @default(100)
+  isTemporarilyBanned Boolean         @default(false)
+  isPermanentlyBanned Boolean         @default(false)
+  
+  matches            MatchPlayer[]
+  teams              TeamPlayer[]
+  hireRequests       HireRequest[]
+  warnings           CreditHistory[]
+  stats              PlayerStats?
+  appeals            Appeal[]
+  manOfTheMatchIn    Match[]          @relation("PlayerManOfTheMatch")
+  
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}
+
+model Tournament {
+  id                      String          @id @unique
+  organizer               Organizer       @relation(fields: [organizerId], references: [id])
+  organizerId             String
+  title                   String?
+  gameType                String
+  entryFee                Int
+  matchOvers              Int
+  numberOfPlayers         Int
+  pitchType               String
+  boundarySize            String
+  isRunningAllowed        Boolean
+  enableSixRuns           Boolean
+  enableFastBowlers       Boolean
+  tournamentDateTime      DateTime
+  numberOfTeams           Int
+  autoFixture             Boolean
+  autoCancelIfInsufficientTeams Boolean @default(false)
+  minTeams                Int            @default(2)
+  maxTeams                Int
+  location                String
+  contactNumber           String
+  tournamentImage         String?
+  status                  TournamentStatus
+  prizePoolDetails        Json?          
+  fieldDetails            String?
+  winnerTeamId            String?
+  winnerTeam              Team?          @relation("TournamentWinner", fields: [winnerTeamId], references: [id])
+  cancelledAt             DateTime?
+  cancelReason            String?
+  autoCancelled           Boolean        @default(false)
+  
+  teams                   Team[]
+  fixtures                Fixture[]
+  matches                 Match[]
+  notifications           Notification[]
+  hireRequests            HireRequest[]
+  
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+}
+
+model Team {
+  id            String          @id @unique
+  name          String
+  logo          String?
+  jersey        String?
+  customJersey  String?
+  manager       Manager         @relation(fields: [managerId], references: [id])
+  managerId     String
+  tournament    Tournament      @relation(fields: [tournamentId], references: [id])
+  tournamentId  String
+  players       TeamPlayer[]
+  chatGroup     ChatGroup?
+  status        HireStatus      @default(PENDING)
+
+  homeMatches   Match[]         @relation("HomeTeam")
+  awayMatches   Match[]         @relation("AwayTeam")
+  wonMatches    Match[]         @relation("WinnerTeam")
+  wonTournaments Tournament[]   @relation("TournamentWinner")
+  
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+model TeamPlayer {
+  id         String        @id @unique
+  team       Team          @relation(fields: [teamId], references: [id])
+  teamId     String
+  player     PlayerProfile @relation(fields: [playerId], references: [id])
+  playerId   String
+  isCaptain  Boolean       @default(false)
+  isActive   Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  
+  @@unique([teamId, playerId])
+}
+
+model Fixture {
+  id             String       @id @unique
+  tournament     Tournament   @relation(fields: [tournamentId], references: [id])
+  tournamentId   String
+  round          Int
+  matchId        String?      @unique
+  match          Match?       @relation(fields: [matchId], references: [id])
+  homeTeamId     String?
+  awayTeamId     String?
+  winnerTeamId   String?
+  dependsOnMatchId  String?  
+  dependsOnMatch    Fixture? @relation("FixtureDependency", fields: [dependsOnMatchId], references: [id])
+  dependentMatches  Fixture[] @relation("FixtureDependency")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Match {
+  id               String         @id @unique
+  tournament       Tournament     @relation(fields: [tournamentId], references: [id])
+  tournamentId     String
+  fixture          Fixture?
+  dateTime         DateTime
+  status           MatchStatus
+  paused           Boolean        @default(false)
+  
+  homeTeam         Team?          @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  homeTeamId       String?
+  awayTeam         Team?          @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  awayTeamId       String?
+  
+  tossWinnerTeamId   String?
+  battingFirstTeamId String?
+  winnerTeam         Team?         @relation("WinnerTeam", fields: [winnerTeamId], references: [id])
+  winnerTeamId       String?
+  
+  manOfTheMatch      PlayerProfile? @relation("PlayerManOfTheMatch", fields: [manOfTheMatchId], references: [id])
+  manOfTheMatchId    String?
+  
+  scorecards       MatchScorecard[]
+  players          MatchPlayer[]
+  notifications    Notification[]
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model MatchScorecard {
+  id        String @id @unique
+  match     Match  @relation(fields: [matchId], references: [id])
+  matchId   String
+  teamId    String
+  runs      Int
+  wickets   Int
+  overs     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([matchId, teamId])
+}
+
+model MatchPlayer {
+  id           String        @id @unique
+  match        Match         @relation(fields: [matchId], references: [id])
+  matchId      String
+  player       PlayerProfile @relation(fields: [playerId], references: [id])
+  playerId     String
+  runs         Int           @default(0)
+  ballsFaced   Int           @default(0)
+  wicketsTaken Int           @default(0)
+  oversBowled  Float         @default(0)
+  extras       Int           @default(0)
+  attendance   Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  
+  @@unique([matchId, playerId])
+}
+
+model PlayerStats {
+  id            String         @id @unique
+  playerProfile PlayerProfile  @relation(fields: [playerId], references: [id])
+  playerId      String         @unique
+  matchesPlayed Int            @default(0)
+  runsScored    Int            @default(0)
+  wicketsTaken  Int            @default(0)
+  stars         Int            @default(0)
+  feedback      String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model CoinTransaction {
+  id        String          @id @unique
+  user      User            @relation(fields: [userId], references: [id])
+  userId    String
+  amount    Int
+  type      TransactionType
+  isSuccess Boolean         @default(true)
+  reference String?
+  createdAt DateTime        @default(now())
+}
+
+model WithdrawalRequest {
+  id          String           @id @unique
+  user        User             @relation(fields: [userId], references: [id])
+  userId      String
+  phoneNumber String
+  amount      Int
+  status      WithdrawalStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  processedAt DateTime?
+}
+
+model IdentityVerification {
+  id         String   @id @unique
+  user       User     @relation(fields: [userId], references: [id])
+  userId     String   @unique
+  frontImage String
+  backImage  String
+  faceImage  String
+  fullName   String
+  dob        DateTime
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Notification {
+  id           String      @id @unique
+  user         User        @relation(fields: [userId], references: [id])
+  userId       String
+  title        String
+  body         String
+  isRead       Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  
+  matchId      String?
+  match        Match?      @relation(fields: [matchId], references: [id])
+  tournamentId String?
+  tournament   Tournament? @relation(fields: [tournamentId], references: [id])
+}
+
+model ChatMessage {
+  id           String        @id @unique
+  sender       User          @relation("UserSentMessages", fields: [senderId], references: [id])
+  senderId     String
+  receiver     User          @relation("UserReceivedMessages", fields: [receiverId], references: [id])
+  receiverId   String
+  message      String
+  isDraft      Boolean       @default(false)
+  sentTime     DateTime?
+  receivedTime DateTime?
+  seenTime     DateTime?
+  status       MessageStatus @default(SENT)
+  createdAt    DateTime      @default(now())
+}
+
+model ChatGroup {
+  id        String   @id @unique
+  name      String
+  team      Team?    @relation(fields: [teamId], references: [id])
+  teamId    String?  @unique
+  creator   User     @relation("GroupCreator", fields: [creatorId], references: [id])
+  creatorId String
+  createdAt DateTime @default(now())
+  
+  members   ChatGroupMember[]
+  messages  ChatGroupMessage[]
+}
+
+model ChatGroupMember {
+  id       String    @id @unique
+  group    ChatGroup @relation(fields: [groupId], references: [id])
+  groupId  String
+  user     User      @relation(fields: [userId], references: [id])
+  userId   String
+  joinedAt DateTime  @default(now())
+  
+  @@unique([groupId, userId])
+}
+
+model ChatGroupMessage {
+  id           String        @id @unique
+  group        ChatGroup     @relation(fields: [groupId], references: [id])
+  groupId      String
+  sender       User          @relation(fields: [senderId], references: [id])
+  senderId     String
+  message      String
+  isDraft      Boolean       @default(false)
+  sentTime     DateTime?
+  receivedTime DateTime?
+  seenTime     DateTime?
+  status       MessageStatus @default(SENT)
+  createdAt    DateTime      @default(now())
+}
+
+model CreditHistory {
+  id          String         @id @unique
+  player      PlayerProfile  @relation(fields: [playerId], references: [id])
+  playerId    String
+  user        User           @relation(fields: [userId], references: [id])
+  userId      String
+  change      Int
+  reason      String
+  createdAt   DateTime       @default(now())
+}
+
+model HireRequest {
+  id            String        @id @unique
+  player        PlayerProfile @relation(fields: [playerId], references: [id])
+  playerId      String
+  manager       Manager       @relation(fields: [managerId], references: [id])
+  managerId     String
+  tournament    Tournament    @relation(fields: [tournamentId], references: [id])
+  tournamentId  String
+  status        HireStatus
+  message       String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Appeal {
+  id          String        @id @unique
+  player      PlayerProfile @relation(fields: [playerId], references: [id])
+  playerId    String
+  reason      String
+  status      AppealStatus  @default(PENDING)
+  createdAt   DateTime      @default(now())
+  reviewedAt  DateTime?
+}
